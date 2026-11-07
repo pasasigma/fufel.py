@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+roblox_updates.json
+roblox_updates.tmp
