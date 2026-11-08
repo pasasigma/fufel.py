@@ -406,20 +406,35 @@ AUTOMOD_EXEMPT_USER_IDS = {
 
 
 FORBIDDEN_WORDS = [
+
     "сын шлюхи", "cын шлюхи", "сын шлюxи", "сукин сын", "cукин cын", "сыкин сын",
+
     "сын шалавы", "сын шaлaвы", "cын шaлaвы", "сын пидора", "сын пидoра", "сын пидoрa", "cын пидopа",
+
     "хуесос", "хуесoс", "xуесос", "хуecoc", "xyecoc",
+
     "пидор", "пидoр", "пидop", "пидорас", "пидoрас", "пидoрaс", "пидopac",
+
     "пидорасина", "пидoрасина", "пидoрaсинa", "пидopacинa",
+
     "пидорасы", "пидoрасы", "пидoрaсы", "пидopacы",
+
     "гандон", "гандoн", "гaндон", "гaндoн",
+
     "гондон", "гoндон", "гондoн", "гoндoн",
+
     "лёха", "лёхa", "лёxa", "леха", "лeха", "лехa", "лexa",
+
     "аллах", "aллах", "аллaх", "aллaх", "aллax",
+
     "алах", "aлах", "алaх", "aлaх", "aлax",
+
     "чурка", "чуркa", "чypкa", "чурки", "чypки",
+
     "шлюха", "шлюхa", "шлюxa",
+
     "проститутка", "прoститутка", "прoституткa", "пpocтитуткa"
+
 ]
 
 
@@ -532,6 +547,7 @@ async def on_message(message):
         return
     if await moderate_message(message):
         return
+    await activity_app.reward_message(message)
     await bot.process_commands(message)
 
 
@@ -689,6 +705,9 @@ async def watch_roblox_updates():
 async def before_roblox_updates():
     await bot.wait_until_ready()
 
+
+from activity import install
+activity_app = install(bot)
 
 if __name__ == "__main__":
     bot.run(BOT_TOKEN)
