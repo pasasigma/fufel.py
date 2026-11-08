@@ -42,11 +42,6 @@ class Activity:
         if not application_id:
             return
         commands = self.bot.tree.get_commands()
-        if not self.commands_registered:
-            for command in commands:
-                await self.bot.http.request(Route('POST', '/applications/{application_id}/commands', application_id=application_id), json=command.to_dict(self.bot.tree))
-            self.commands_registered = True
-            logger.warning('Slash: глобальные команды зарегистрированы (%s).', len(commands))
         for guild in self.bot.guilds:
             if guild.id in self.command_guilds:
                 continue
@@ -61,6 +56,15 @@ class Activity:
                 continue
             self.command_guilds.add(guild.id)
             logger.warning('Slash: команды готовы на сервере %s: %s', guild.id, ', '.join('/'+c.name for c in commands))
+
+        if not self.commands_registered and all(g.id in self.command_guilds for g in self.bot.guilds):
+            existing = await self.bot.http.request(Route('GET', '/applications/{application_id}/commands', application_id=application_id))
+            names = {c.name for c in commands}
+            for command in existing:
+                if command.get('type') == 1 and command.get('name') in names:
+                    await self.bot.http.request(Route('DELETE', '/applications/{application_id}/commands/{command_id}', application_id=application_id, command_id=command['id']))
+            self.commands_registered = True
+            logger.warning('Slash: глобальные дубли удалены; команды работают на серверах.')
 
     @tasks.loop(seconds=60)
     async def commands_tick(self):

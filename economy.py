@@ -28,13 +28,11 @@ def crash_multiplier(draw):
     u = (999999 - draw) / 999999
     if u < 0.02:
         value = 1 + 0.30 * u / 0.02
-    elif u < 0.92:
-        p = (u - 0.02) / 0.90
-        value = 1.30 + math.sqrt(p * 0.18) if p < 0.5 else 1.90 - math.sqrt((1-p) * 0.18)
-    elif u < 0.99:
-        value = 1.90 + 1.10 * (u - 0.92) / 0.07
+    elif u < 0.97:
+        p = (u - 0.02) / 0.95
+        value = 1.30 + math.sqrt(p * 1.70 * 0.50) if p < 0.50/1.70 else 3.00 - math.sqrt((1-p) * 1.70 * 1.20)
     else:
-        value = 3 + 7 * (u - 0.99) / 0.01
+        value = 3 + 7 * (u - 0.97) / 0.03
     return min(10.0, max(1.0, math.floor((value + 1e-9) * 100) / 100))
 
 
