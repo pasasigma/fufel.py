@@ -23,6 +23,11 @@ PRIZES = [
 ]
 
 
+def crash_multiplier(draw):
+    u = (draw + 1) / 1000001
+    return min(10.0, max(1.0, math.floor((0.95 / u) ** (1 / 2.2) * 10) / 10))
+
+
 class Economy:
     def __init__(self, path):
         self.db = sqlite3.connect(path, isolation_level=None)
@@ -123,7 +128,7 @@ class Economy:
         def action():
             self.change(guild,user,-1000,'Рулетка: ставка')
             draw=secrets.randbelow(10000)
-            for kind,value,weight in PRIZES:
+            for prize_index,(kind,value,weight) in enumerate(PRIZES):
                 if draw < weight:
                     break
                 draw -= weight
@@ -135,7 +140,7 @@ class Economy:
                     self.change(guild,user,value,'Рулетка: компенсация повторной роли')
                 else:
                     self.grant_role(guild,user,value)
-            return {'kind':kind,'value':value}
+            return {'kind':kind,'value':value,'prize_index':prize_index}
         return self.once(guild,user,key,action)
 
     def crash_start(self, guild, user, stake, key):
@@ -146,8 +151,7 @@ class Economy:
             if current and current['status']=='flying':
                 raise ValueError('Завершите текущий полёт')
             self.change(guild,user,-stake,'Crash: ставка')
-            u=(secrets.randbelow(1000000)+1)/1000001
-            multiplier=min(100.0,max(1.0,math.floor(0.95/u*100)/100))
+            multiplier=crash_multiplier(secrets.randbelow(1000000))
             started=time.time()
             ends=started+math.log(multiplier)/0.12
             self.db.execute('INSERT OR REPLACE INTO crash VALUES (?,?,?,?,?,?,?,?)',
@@ -164,7 +168,7 @@ class Economy:
             self.db.execute("UPDATE crash SET status='crashed' WHERE guild=? AND user=?",(str(guild),str(user)))
             status='crashed'
         multiplier=row['multiplier'] if status in ('crashed','cashed') else min(row['multiplier'],math.exp(0.12*(time.time()-row['started'])))
-        return {'status':status,'multiplier':math.floor(multiplier*100)/100,'stake':row['stake'],'payout':row['payout']}
+        return {'status':status,'multiplier':math.floor((multiplier+1e-9)*10)/10,'stake':row['stake'],'payout':row['payout'],'elapsed':max(0,time.time()-row['started']),'growth_rate':0.12}
 
     def crash_cashout(self, guild, user, key):
         def action():

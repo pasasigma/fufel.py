@@ -1,0 +1,1 @@
+{"private":true,"scripts":{"build":"esbuild ui.js --bundle --minify --outfile=static/assets/app.js"},"dependencies":{"@discord/embedded-app-sdk":"^2.0.0"},"devDependencies":{"esbuild":"^0.25.0"}}
