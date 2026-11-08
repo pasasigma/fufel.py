@@ -18,13 +18,23 @@ class CommandTests(unittest.IsolatedAsyncioTestCase):
         await fufel.cmd_app.callback(interaction)
         interaction.response.launch_activity.assert_awaited_once()
 
-    async def test_upsert_keeps_primary_entry(self):
+    async def test_global_and_guild_commands_registered_once(self):
         a=Activity.__new__(Activity)
         a.commands_registered=False
-        request=AsyncMock(side_effect=[[{'id':'9','type':4,'handler':2,'contexts':[0]}]]+[{}]*len(fufel.bot.tree.get_commands()))
-        a.bot=SimpleNamespace(application_id=int(CLIENT_ID),http=SimpleNamespace(request=request),tree=fufel.bot.tree)
-        self.assertTrue(await a.register_entry_point())
-        self.assertTrue(a.commands_registered)
-        self.assertTrue(all(c.args[0].method=='POST' for c in request.call_args_list[1:]))
+        a.command_guilds=set()
+        request=AsyncMock(return_value={})
+        a.bot=SimpleNamespace(application_id=int(CLIENT_ID),http=SimpleNamespace(request=request),tree=fufel.bot.tree,guilds=[SimpleNamespace(id=42)])
+        await a.register_commands()
+        count=len(fufel.bot.tree.get_commands())
+        self.assertEqual(request.call_count,count*2)
+        self.assertEqual(a.command_guilds,{42})
+        self.assertTrue(all(c.args[0].method=='POST' for c in request.call_args_list))
+        self.assertTrue(all('/guilds/42/' in c.args[0].url for c in request.call_args_list[count:]))
+        self.assertTrue(all('contexts' not in c.kwargs['json'] for c in request.call_args_list[count:]))
+        await a.register_commands()
+        self.assertEqual(request.call_count,count*2)
+        a.bot.guilds.append(SimpleNamespace(id=43))
+        await a.register_commands()
+        self.assertEqual(request.call_count,count*3)
 
 if __name__=='__main__':unittest.main()
