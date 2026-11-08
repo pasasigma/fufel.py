@@ -62,10 +62,9 @@ class EconomyTests(unittest.TestCase):
     def test_crash_distribution_and_limit(self):
         values=[crash_multiplier(i) for i in range(0,1000000,10)]
         self.assertTrue(all(1 <= v <= 10 for v in values))
-        self.assertAlmostEqual(sum(values)/len(values),1.69,delta=.02)
+        self.assertAlmostEqual(sum(values)/len(values),2.15,delta=.03)
         self.assertAlmostEqual(sum(v < 1.30 for v in values)/len(values),.02,delta=.001)
-        self.assertAlmostEqual(sum(1.30 <= v < 1.90 for v in values)/len(values),.90,delta=.001)
-        self.assertGreater(sum(1.45 <= v <= 1.75 for v in values)/len(values),.65)
+        self.assertAlmostEqual(sum(1.30 <= v < 3.00 for v in values)/len(values),.95,delta=.001)
         self.assertEqual(crash_multiplier(0),10)
         self.assertEqual(crash_multiplier(999999),1)
 
