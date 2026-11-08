@@ -2,6 +2,7 @@ import math
 import secrets
 import sqlite3
 import time
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 
 ROLES = {
@@ -25,7 +26,7 @@ PRIZES = [
 
 def crash_multiplier(draw):
     u = (draw + 1) / 1000001
-    return min(10.0, max(1.0, math.floor((0.95 / u) ** (1 / 2.2) * 10) / 10))
+    return min(10.0, max(1.0, math.floor((0.95 / u) ** (1 / 1.9) * 100) / 100))
 
 
 class Economy:
@@ -35,6 +36,9 @@ class Economy:
         self.db.execute('PRAGMA journal_mode=WAL')
         self.db.execute('PRAGMA busy_timeout=5000')
         self.db.executescript('''
+            CREATE TABLE IF NOT EXISTS daily (
+                guild TEXT, user TEXT, day TEXT, streak INTEGER NOT NULL,
+                PRIMARY KEY(guild,user));
             CREATE TABLE IF NOT EXISTS wallets (
                 guild TEXT, user TEXT, coins INTEGER NOT NULL DEFAULT 0 CHECK(coins>=0),
                 last_message REAL NOT NULL DEFAULT 0, PRIMARY KEY(guild,user));
@@ -110,6 +114,26 @@ class Economy:
     def own_role(self, guild, user, role):
         return self.db.execute('SELECT 1 FROM entitlements WHERE guild=? AND user=? AND role=?', (str(guild),str(user),role)).fetchone() is not None
 
+    def highest_role(self, guild, user):
+        owned = [r for r in ROLES if self.own_role(guild, user, r)]
+        return max(owned, key=ROLES.get) if owned else None
+
+    def next_role(self, guild, user):
+        current = self.highest_role(guild, user)
+        return next((r for r in sorted(ROLES, key=ROLES.get) if ROLES[r] > ROLES.get(current, 0)), None)
+
+    def daily_reward(self, guild, user, now=None):
+        today = datetime.fromtimestamp(time.time() if now is None else now, timezone(timedelta(hours=5))).date()
+        with self.transaction():
+            row = self.db.execute('SELECT day,streak FROM daily WHERE guild=? AND user=?', (str(guild),str(user))).fetchone()
+            if row and row['day'] >= today.isoformat():
+                return {'claimed':False, 'day':row['streak'], 'amount':0}
+            streak = row['streak'] + 1 if row and row['day'] == (today-timedelta(days=1)).isoformat() else 1
+            amount = streak * 100
+            self.change(guild,user,amount,f'Daily: день {streak}')
+            self.db.execute('INSERT OR REPLACE INTO daily VALUES (?,?,?,?)', (str(guild),str(user),today.isoformat(),streak))
+            return {'claimed':True, 'day':streak, 'amount':amount}
+
     def grant_role(self, guild, user, role):
         self.db.execute('INSERT INTO entitlements(guild,user,role) VALUES (?,?,?)', (str(guild),str(user),role))
 
@@ -119,6 +143,8 @@ class Economy:
                 raise ValueError('Роль не продаётся')
             if self.own_role(guild,user,role):
                 raise ValueError('Эта роль уже приобретена')
+            if role != self.next_role(guild,user):
+                raise ValueError('Сначала приобретите предыдущую ступень роли')
             self.change(guild,user,-ROLES[role],'Покупка роли')
             self.grant_role(guild,user,role)
             return {'kind':'role','role':role}
@@ -135,7 +161,7 @@ class Economy:
             if kind == 'coins':
                 self.change(guild,user,value,'Рулетка: выигрыш')
             elif kind == 'role':
-                if self.own_role(guild,user,value):
+                if ROLES.get(self.highest_role(guild,user), 0) >= ROLES[value]:
                     value,kind=ROLES[value],'coins'
                     self.change(guild,user,value,'Рулетка: компенсация повторной роли')
                 else:
@@ -168,7 +194,7 @@ class Economy:
             self.db.execute("UPDATE crash SET status='crashed' WHERE guild=? AND user=?",(str(guild),str(user)))
             status='crashed'
         multiplier=row['multiplier'] if status in ('crashed','cashed') else min(row['multiplier'],math.exp(0.12*(time.time()-row['started'])))
-        return {'status':status,'multiplier':math.floor((multiplier+1e-9)*10)/10,'stake':row['stake'],'payout':row['payout'],'elapsed':max(0,time.time()-row['started']),'growth_rate':0.12}
+        return {'status':status,'multiplier':math.floor((multiplier+1e-9)*100)/100,'stake':row['stake'],'payout':row['payout'],'elapsed':max(0,time.time()-row['started']),'growth_rate':0.12}
 
     def crash_cashout(self, guild, user, key):
         def action():

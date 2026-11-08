@@ -24,7 +24,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix=[], intents=intents, help_command=None)
 
 
 time_cds = {}
@@ -204,7 +204,8 @@ async def on_command_error(ctx, error):
             logging.exception("Не удалось отправить сообщение об ошибке команды")
 
 
-@bot.command(name="time")
+@bot.hybrid_command(name="time", description="Выдать таймаут участнику")
+@commands.guild_only()
 async def cmd_time(ctx, target: discord.Member, time_str: str, *, reason: str = "Причина не указана"):
     is_support = discord.utils.get(ctx.author.roles, id=SUPPORT_ROLE_ID)
     is_mod = discord.utils.get(ctx.author.roles, id=MOD_ROLE_ID)
@@ -238,7 +239,8 @@ async def cmd_time(ctx, target: discord.Member, time_str: str, *, reason: str = 
     await send_log(ctx.guild, f"🕒 **Таймаут**\n**Кто выдал:** {ctx.author.mention}\n**Нарушитель:** {target.mention}\n**Срок:** {actual_duration}\n**Причина:** {reason}")
 
 
-@bot.command(name="untime")
+@bot.hybrid_command(name="untime", description="Снять таймаут")
+@commands.guild_only()
 async def cmd_untime(ctx, target: discord.Member):
     is_support = discord.utils.get(ctx.author.roles, id=SUPPORT_ROLE_ID)
     is_mod = discord.utils.get(ctx.author.roles, id=MOD_ROLE_ID)
@@ -258,7 +260,8 @@ async def cmd_untime(ctx, target: discord.Member):
         await ctx.send("❌ У бота нет прав для этого действия.")
 
 
-@bot.command(name="ban")
+@bot.hybrid_command(name="ban", description="Выдать роль бана и снять остальные роли")
+@commands.guild_only()
 async def cmd_ban(ctx, target: discord.Member, *, reason: str = "Причина не указана"):
     is_mod = discord.utils.get(ctx.author.roles, id=MOD_ROLE_ID)
     is_admin = ctx.author.guild_permissions.administrator
@@ -304,7 +307,8 @@ async def cmd_ban(ctx, target: discord.Member, *, reason: str = "Причина 
     await send_log(ctx.guild, f"🔨 **Бан (замена ролей)**\n**Кто выдал:** {ctx.author.mention}\n**Нарушитель:** {target.mention}\n**Снято ролей:** {len(removed_roles)}\n**Причина:** {reason}{note}")
 
 
-@bot.command(name="unban")
+@bot.hybrid_command(name="unban", description="Снять роль бана")
+@commands.guild_only()
 async def cmd_unban(ctx, target: discord.Member):
     is_mod = discord.utils.get(ctx.author.roles, id=MOD_ROLE_ID)
     is_admin = ctx.author.guild_permissions.administrator
@@ -324,7 +328,8 @@ async def cmd_unban(ctx, target: discord.Member):
         await ctx.send(f"❕ У пользователя {target.mention} нет роли бана.")
 
 
-@bot.command(name="backup")
+@bot.hybrid_command(name="backup", description="Снять наказания участника")
+@commands.guild_only()
 async def cmd_backup(ctx, target: discord.Member):
     if not ctx.author.guild_permissions.administrator:
         return await ctx.send("❌ Команда доступна только Администраторам сервера.")
@@ -349,7 +354,8 @@ async def cmd_backup(ctx, target: discord.Member):
     await send_log(ctx.guild, f"🛡️ **Очистка наказаний (Backup)**\n**Админ:** {ctx.author.mention}\n**Пользователь:** {target.mention}")
 
 
-@bot.command(name="troll")
+@bot.hybrid_command(name="troll", description="Запустить троллинг (только владелец сервера)")
+@commands.guild_only()
 async def cmd_troll(ctx, target: discord.Member):
     if not is_server_owner(ctx):
         return await ctx.send("❌ Команда доступна только владельцу сервера.")
@@ -367,10 +373,11 @@ async def cmd_troll(ctx, target: discord.Member):
         "task": None,
     }
     trolls[key]["task"] = asyncio.create_task(troll_member(ctx.guild.id, target.id))
-    await ctx.send(f"😈 Троллинг {target.mention} запущен. Используйте `!untroll {target.mention}`, чтобы остановить.")
+    await ctx.send(f"😈 Троллинг {target.mention} запущен. Используйте `/untroll {target.mention}`, чтобы остановить.")
     await send_log(ctx.guild, f"😈 **Troll**\n**Кто запустил:** {ctx.author.mention}\n**Пользователь:** {target.mention}")
 
-@bot.command(name="untroll")
+@bot.hybrid_command(name="untroll", description="Остановить троллинг")
+@commands.guild_only()
 async def cmd_untroll(ctx, target: discord.Member):
     if not is_server_owner(ctx):
         return await ctx.send("❌ Команда доступна только владельцу сервера.")
@@ -382,7 +389,8 @@ async def cmd_untroll(ctx, target: discord.Member):
     await send_log(ctx.guild, f"🛑 **Снятие Troll**\n**Кто остановил:** {ctx.author.mention}\n**Пользователь:** {target.mention}")
 
 
-@bot.command(name="тикетвоучер", aliases=["тикет", "тикетваучер"])
+@bot.hybrid_command(name="тикетвоучер", description="Информация о тикетвоучере")
+@commands.guild_only()
 async def cmd_ticketvoucher(ctx):
     text = (
         "Тикетвоучер равняется 1 сигн\n"
@@ -570,7 +578,8 @@ async def on_raw_message_edit(payload):
     await moderate_message(message)
 
 
-@bot.command(name="запреты", aliases=["badwords"])
+@bot.hybrid_command(name="запреты", description="Показать запрещённые слова")
+@commands.guild_only()
 async def cmd_forbidden_words(ctx):
     paginator = commands.Paginator(prefix="", suffix="", max_size=1900)
     paginator.add_line(f"Запрещённые слова и фразы — тайм-аут {AUTO_TIMEOUT_MINUTES} минут:")
@@ -704,6 +713,37 @@ async def watch_roblox_updates():
 @watch_roblox_updates.before_loop
 async def before_roblox_updates():
     await bot.wait_until_ready()
+
+
+
+@bot.before_invoke
+async def prepare_command(ctx):
+    if ctx.interaction and not ctx.interaction.response.is_done():
+        await ctx.defer()
+
+@bot.tree.error
+async def slash_error(interaction, error):
+    logging.error("Ошибка slash-команды", exc_info=(type(error), error, error.__traceback__))
+    text = "Не удалось выполнить команду. Проверьте права и параметры."
+    if interaction.response.is_done():
+        await interaction.followup.send(text, ephemeral=True)
+    else:
+        await interaction.response.send_message(text, ephemeral=True)
+
+@bot.hybrid_command(name="daily", description="Получить ежедневные монеты: +100 за каждый день серии")
+@commands.guild_only()
+async def cmd_daily(ctx):
+    if ctx.author.is_timed_out() or any(r.id == BANNED_ROLE_ID for r in ctx.author.roles):
+        return await ctx.send("Награда недоступна во время наказания.", ephemeral=True)
+    result = activity_app.economy.daily_reward(ctx.guild.id, ctx.author.id)
+    if not result['claimed']:
+        return await ctx.send("Сегодня награда уже получена. Следующая — после 00:00 по Екатеринбургу (UTC+5).", ephemeral=True)
+    await ctx.send(f"{ctx.author.mention}, день {result['day']}: +{result['amount']} монет! Забирай каждый день, чтобы сохранить серию.")
+
+@bot.tree.command(name="app", description="Открыть Фуфлыжник прямо в текстовом чате")
+@discord.app_commands.guild_only()
+async def cmd_app(interaction: discord.Interaction):
+    await interaction.response.launch_activity()
 
 
 from activity import install

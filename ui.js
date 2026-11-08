@@ -24,13 +24,13 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener(
 function node(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
 function shops(target,roles){$(target).replaceChildren();roles.forEach(role=>{
  const row=node('div','','role-row'), info=node('div','');info.append(node('strong',role.name),node('small',fmt(role.price)+' монет'));
- const b=node('button',role.owned?'Куплено':'Купить');b.disabled=busy||role.owned||!role.available||state.balance<role.price;
+ const b=node('button',role.owned?'Пройдена':role.next?'Купить':'Сначала предыдущая');b.disabled=busy||role.owned||!role.next||!role.available||state.balance<role.price;
  b.onclick=()=>act('buy',{role:role.id});row.append(info,b);$(target).append(row);
 })}
 function render(){
  $('admin-tab').hidden=!state.is_admin;
  $('balance').textContent=fmt(state.balance);$('greeting').textContent='Привет, '+state.name;
- shops('mini-shop',state.roles);shops('full-shop',state.roles);
+ shops('full-shop',state.roles);
  $('history').replaceChildren();if(!state.history.length)$('history').append(node('p','Пока нет операций. Напиши в чат или зайди в войс.','muted'));
  state.history.forEach(h=>{const row=node('div','','entry'),a=node('div',h.reason);a.append(node('small',new Date(h.created*1000).toLocaleString('ru-RU')));row.append(a,node('strong',(h.delta>0?'+':'')+fmt(h.delta),h.delta>0?'positive':'negative'));$('history').append(row)});
  $('reward-list').replaceChildren();state.prizes.forEach(([kind,value],i)=>{
@@ -38,7 +38,7 @@ function render(){
  });
  drawWheel();
  const c=state.crash, flying=c?.status==='flying';
- $('multiplier').textContent=(c?.multiplier||1).toFixed(1)+'×';
+ $('multiplier').textContent=(c?.multiplier||1).toFixed(2)+'×';
  $('flight-status').textContent=flying?'Полёт продолжается':c?.status==='crashed'?'Полёт завершён':c?.status==='cashed'?'Выигрыш: '+fmt(c.payout)+' монет':'Готов к полёту';
  $('cashout').textContent=flying?'Забрать '+fmt(Math.floor(c.stake*c.multiplier)):'Забрать';
  $('cashout').disabled=busy||!flying;$('start').disabled=busy||flying||state.balance<100;$('stake').disabled=busy||flying;$('spin').disabled=busy||state.balance<1000;
@@ -67,11 +67,11 @@ function draw(){
   const t=tmax*i/5,xx=px(t);x.beginPath();x.moveTo(xx,top);x.lineTo(xx,bottom);x.stroke();x.textAlign='center';x.fillText(Math.round(t)+'с',xx,bottom+22);
  }
  const curve=()=>{x.moveTo(left,bottom);for(let i=1;i<=100;i++){const t=elapsed*i/100;x.lineTo(px(t),py(Math.exp(rate*t)))}};
- const won=c?.status==='cashed',lost=c?.status==='crashed',color=won?'#93e6b1':lost?'#ff7385':'#ed3046';
- x.beginPath();curve();x.lineTo(px(elapsed),bottom);x.closePath();const fill=x.createLinearGradient(0,top,0,bottom);fill.addColorStop(0,won?'#93e6b144':'#ed304655');fill.addColorStop(1,won?'#93e6b100':'#ed304600');x.fillStyle=fill;x.fill();
+ const won=c?.status==='cashed',lost=c?.status==='crashed',color=won?'#93e6b1':lost?'#ff7385':'#24c878';
+ x.beginPath();curve();x.lineTo(px(elapsed),bottom);x.closePath();const fill=x.createLinearGradient(0,top,0,bottom);fill.addColorStop(0,won?'#93e6b144':'#24c87855');fill.addColorStop(1,won?'#93e6b100':'#24c87800');x.fillStyle=fill;x.fill();
  x.beginPath();curve();x.strokeStyle=color;x.lineWidth=3;x.stroke();x.beginPath();x.arc(px(elapsed),py(m),4,0,Math.PI*2);x.fillStyle=color;x.fill();
- const shown=Math.floor((m+1e-9)*10)/10;
- $('multiplier').textContent=shown.toFixed(1)+'×';$('multiplier').style.color=won?'#93e6b1':lost?'#ff7385':'';
+ const shown=Math.floor((m+1e-9)*100)/100;
+ $('multiplier').textContent=shown.toFixed(2)+'×';$('multiplier').style.color=won?'#93e6b1':lost?'#ff7385':'';
  if(c?.status==='flying')$('cashout').textContent='Забрать ≈ '+fmt(Math.floor(c.stake*shown));
 }
 function animateChart(){
@@ -84,19 +84,19 @@ function drawWheel(){
  x.clearRect(0,0,size,size);x.save();x.translate(500,500);
  for(let i=0;i<n;i++){
   const index=i%state.prizes.length,[kind]=state.prizes[index],angle=-Math.PI/2+i*step;
-  x.beginPath();x.moveTo(0,0);x.arc(0,0,r,angle,angle+step);x.closePath();x.fillStyle=i%2?'#ed3046':'#09090b';x.fill();x.strokeStyle='#ffffff24';x.lineWidth=2;x.stroke();
-  x.save();x.rotate(angle+step/2);x.textAlign='right';x.fillStyle='#fff';x.font='600 23px "Segoe UI",sans-serif';
+  x.beginPath();x.moveTo(0,0);x.arc(0,0,r,angle,angle+step);x.closePath();x.fillStyle=i%2?'#24c878':'#09090b';x.fill();x.strokeStyle='#ffffff24';x.lineWidth=2;x.stroke();
+  x.save();x.rotate(angle+step/2);x.textAlign='right';x.fillStyle=i%2?'#071b11':'#fff';x.font='600 23px "Segoe UI",sans-serif';
   let label=prizeLabel(index);while(x.measureText(label).width>285&&label.length>3)label=label.slice(0,-2)+'…';x.fillText(label,r-24,8);x.restore();
  }
- x.beginPath();x.arc(0,0,r,0,Math.PI*2);x.strokeStyle='#ed3046';x.lineWidth=12;x.stroke();x.restore();
+ x.beginPath();x.arc(0,0,r,0,Math.PI*2);x.strokeStyle='#24c878';x.lineWidth=12;x.stroke();x.restore();
 }
 async function spinWheel(result){
  const count=state.prizes.length,n=count*2,index=Number.isInteger(result.prize_index)?result.prize_index:state.prizes.findIndex(([kind,value])=>kind===result.kind&&value===result.value);
  if(index<0||index>=count)throw new Error('Не удалось показать сектор. Проверь историю баланса.');
  const sector=index+(Math.random()<.5?0:count),step=360/n,target=((360-(sector+.5)*step)%360+360)%360;
- const end=wheelRotation+1800+((target-wheelRotation%360+360)%360);
+ const end=wheelRotation+2880+((target-wheelRotation%360+360)%360);
  $('prize').textContent='Колесо вращается…';$('wheel').style.willChange='transform';
- const animation=$('wheel').animate([{transform:'rotate('+wheelRotation+'deg)'},{transform:'rotate('+end+'deg)'}],{duration:reduced.matches?150:4400,easing:'cubic-bezier(.12,.72,.12,1)',fill:'forwards'});
+ const animation=$('wheel').animate([{transform:'rotate('+wheelRotation+'deg)'},{transform:'rotate('+end+'deg)'}],{duration:reduced.matches?150:7000,easing:'cubic-bezier(.12,.72,.12,1)',fill:'forwards'});
  try{await animation.finished}finally{$('wheel').style.transform='rotate('+end+'deg)';animation.cancel();$('wheel').style.willChange='auto';wheelRotation=end}
  $('prize').textContent=result.kind==='coins'?'Выигрыш: '+fmt(result.value)+' монет':result.kind==='role'?'Выигрыш: '+prizeLabel(index):'В этот раз без выигрыша';
  $('prize').classList.remove('result-ready');void $('prize').offsetWidth;$('prize').classList.add('result-ready');

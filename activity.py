@@ -30,6 +30,7 @@ class Activity:
         self.start_lock = asyncio.Lock()
         self.http = None
         self.login_limits = {}
+        self.commands_registered = False
 
     async def reward_message(self, message):
         if (message.guild and not message.author.bot and not message.webhook_id
@@ -109,6 +110,11 @@ class Activity:
             return False
         commands = await self.bot.http.request(Route(
             'GET', '/applications/{application_id}/commands', application_id=application_id))
+        if not self.commands_registered:
+            for command in self.bot.tree.get_commands():
+                payload = command.to_dict(self.bot.tree)
+                await self.bot.http.request(Route('POST', '/applications/{application_id}/commands', application_id=application_id), json=payload)
+            self.commands_registered = True
         entry = next((command for command in commands if command.get('type') == 4), None)
         if entry is None:
             await self.bot.http.request(Route(
@@ -223,26 +229,36 @@ class Activity:
     async def deliver(self, guild, member):
         if any(r.id == 1563149246964834324 for r in member.roles):
             return True
+        for held in member.roles:
+            role_id = str(held.id)
+            if role_id in ROLES and not self.economy.own_role(guild.id,member.id,role_id):
+                self.economy.grant_role(guild.id,member.id,role_id)
+                self.economy.db.execute('UPDATE entitlements SET delivered=1 WHERE guild=? AND user=? AND role=?', (str(guild.id),str(member.id),role_id))
         rows = self.economy.db.execute('SELECT role FROM entitlements WHERE guild=? AND user=? AND delivered=0',
                                       (str(guild.id),str(member.id))).fetchall()
-        pending = False
-        for row in rows:
-            try:
-                role = self.check_role(guild,row['role'])
-                if role not in member.roles:
-                    await member.add_roles(role, reason='Фуфлыжник: магазин или рулетка')
-                self.economy.db.execute('UPDATE entitlements SET delivered=1 WHERE guild=? AND user=? AND role=?',
-                                        (str(guild.id),str(member.id),row['role']))
-            except (discord.HTTPException, ValueError):
-                pending = True
-        return pending
+        highest = self.economy.highest_role(guild.id,member.id)
+        previous = [r for r in member.roles if str(r.id) in ROLES and ROLES[str(r.id)] < ROLES.get(highest,0)]
+        if not rows and not previous:
+            return False
+        try:
+            role = self.check_role(guild,highest)
+            if role not in member.roles:
+                if not rows:
+                    return False
+                await member.add_roles(role, reason='Фуфлыжник: новая ступень роли')
+            if previous:
+                await member.remove_roles(*previous, reason='Фуфлыжник: замена предыдущей ступени')
+            self.economy.db.execute('UPDATE entitlements SET delivered=1 WHERE guild=? AND user=?', (str(guild.id),str(member.id)))
+            return False
+        except (discord.HTTPException, ValueError):
+            return True
 
     async def state(self, request):
         guild, member = await self.identity(request)
         async with self.locks[(guild.id,member.id)]:
             pending = await self.deliver(guild,member)
             roles = []
-            for role_id,price in ROLES.items():
+            for role_id,price in sorted(ROLES.items(), key=lambda item:item[1]):
                 role = guild.get_role(int(role_id))
                 try:
                     self.check_role(guild,role_id)
@@ -250,7 +266,7 @@ class Activity:
                 except ValueError:
                     available = False
                 roles.append({'id':role_id, 'name':role.name if role else 'Роль недоступна',
-                              'price':price, 'available':available,
+                              'price':price, 'available':available, 'next':role_id == self.economy.next_role(guild.id,member.id),
                               'owned':bool(role and role in member.roles) or self.economy.own_role(guild.id,member.id,role_id)})
             history = self.economy.db.execute('SELECT delta,reason,created FROM ledger WHERE guild=? AND user=? ORDER BY id DESC LIMIT 12',
                                               (str(guild.id),str(member.id))).fetchall()
@@ -300,6 +316,7 @@ class Activity:
             raise ValueError('Некорректный запрос')
         async with self.locks[(guild.id,member.id)]:
             args = (guild.id,member.id)
+            await self.deliver(guild,member)
             if kind == 'buy':
                 role_id = str(body.get('role',''))
                 if role_id not in ROLES:
