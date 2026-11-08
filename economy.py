@@ -25,8 +25,17 @@ PRIZES = [
 
 
 def crash_multiplier(draw):
-    u = (draw + 1) / 1000001
-    return min(10.0, max(1.0, math.floor((0.95 / u) ** (1 / 1.9) * 100) / 100))
+    u = (999999 - draw) / 999999
+    if u < 0.02:
+        value = 1 + 0.30 * u / 0.02
+    elif u < 0.92:
+        p = (u - 0.02) / 0.90
+        value = 1.30 + math.sqrt(p * 0.18) if p < 0.5 else 1.90 - math.sqrt((1-p) * 0.18)
+    elif u < 0.99:
+        value = 1.90 + 1.10 * (u - 0.92) / 0.07
+    else:
+        value = 3 + 7 * (u - 0.99) / 0.01
+    return min(10.0, max(1.0, math.floor((value + 1e-9) * 100) / 100))
 
 
 class Economy:

@@ -31,6 +31,47 @@ class Activity:
         self.http = None
         self.login_limits = {}
         self.commands_registered = False
+        self.command_guilds = set()
+
+    async def start_commands(self):
+        if not self.commands_tick.is_running():
+            self.commands_tick.start()
+
+    async def register_commands(self):
+        application_id = self.bot.application_id
+        if not application_id:
+            return
+        commands = self.bot.tree.get_commands()
+        if not self.commands_registered:
+            for command in commands:
+                await self.bot.http.request(Route('POST', '/applications/{application_id}/commands', application_id=application_id), json=command.to_dict(self.bot.tree))
+            self.commands_registered = True
+            logger.warning('Slash: глобальные команды зарегистрированы (%s).', len(commands))
+        for guild in self.bot.guilds:
+            if guild.id in self.command_guilds:
+                continue
+            try:
+                for command in commands:
+                    payload = command.to_dict(self.bot.tree)
+                    for field in ('contexts', 'integration_types', 'dm_permission'):
+                        payload.pop(field, None)
+                    await self.bot.http.request(Route('POST', '/applications/{application_id}/guilds/{guild_id}/commands', application_id=application_id, guild_id=guild.id), json=payload)
+            except discord.HTTPException as exc:
+                logger.warning('Slash: регистрация на сервере %s не удалась: %s. Повтор через минуту.', guild.id, exc)
+                continue
+            self.command_guilds.add(guild.id)
+            logger.warning('Slash: команды готовы на сервере %s: %s', guild.id, ', '.join('/'+c.name for c in commands))
+
+    @tasks.loop(seconds=60)
+    async def commands_tick(self):
+        if not self.bot.is_ready():
+            return
+        try:
+            await self.register_commands()
+        except (discord.HTTPException, aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            logger.warning('Slash: не удалось зарегистрировать команды: %s. Повтор через минуту.', exc)
+        except Exception:
+            logger.exception('Slash: ошибка подготовки команд. Повтор через минуту.')
 
     async def reward_message(self, message):
         if (message.guild and not message.author.bot and not message.webhook_id
@@ -110,11 +151,6 @@ class Activity:
             return False
         commands = await self.bot.http.request(Route(
             'GET', '/applications/{application_id}/commands', application_id=application_id))
-        if not self.commands_registered:
-            for command in self.bot.tree.get_commands():
-                payload = command.to_dict(self.bot.tree)
-                await self.bot.http.request(Route('POST', '/applications/{application_id}/commands', application_id=application_id), json=payload)
-            self.commands_registered = True
         entry = next((command for command in commands if command.get('type') == 4), None)
         if entry is None:
             await self.bot.http.request(Route(
@@ -345,6 +381,7 @@ class Activity:
 
 def install(bot):
     activity = Activity(bot)
+    bot.add_listener(activity.start_commands, 'on_ready')
     bot.add_listener(activity.start, 'on_ready')
     bot.add_listener(activity.voice_changed, 'on_voice_state_update')
     return activity
