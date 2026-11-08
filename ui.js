@@ -5,10 +5,17 @@ let session='', state=null, busy=false, polling=false, retry=null;
 let sampledAt=performance.now(),wheelRotation=0,frame=0,lastPoll=0;
 const reduced=matchMedia('(prefers-reduced-motion: reduce)');
 const notice=(text,error=false)=>{$('notice').textContent=text;$('notice').classList.toggle('error',error)};
+async function limited(promise,ms,message){
+ let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error(message)),ms)})])}finally{clearTimeout(timer)}
+}
+window.addEventListener('error',()=>notice('Ошибка интерфейса. Закрой Activity и открой заново. Если повторится — сообщи, на каком экране.',true));
 async function api(path,body){
- const response=await fetch('/api/'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(session?{Authorization:'Bearer '+session}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+ try{
+ const response=await fetch('/api/'+path,{signal:controller.signal,method:body?'POST':'GET',headers:{'Content-Type':'application/json',...(session?{Authorization:'Bearer '+session}:{})},...(body?{body:JSON.stringify(body)}:{})});
  let data;try{data=await response.json()}catch{data={error:response.status===401?'Сессия завершилась. Перезапустите Activity.':'Сервер недоступен. Повторите запрос.'}}
  if(!response.ok)throw new Error(data.error||'Не удалось выполнить запрос');return data;
+ }catch(error){if(error.name==='AbortError')throw new Error('Сервер не ответил за 20 секунд ('+path+').');throw error}finally{clearTimeout(timer)}
 }
 document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{
  const name=button.dataset.tab;document.querySelectorAll('.screen').forEach(s=>s.hidden=s.id!==name);
@@ -112,15 +119,24 @@ window.addEventListener('resize',()=>{draw();drawWheel()});
 async function init(){
  if(location.protocol==='file:'){notice('Локальный просмотр. Игры, баланс и магазин работают после запуска приложения через Discord.');return}
  try{
-  const config=await api('config');const sdk=new DiscordSDK(config.client_id);await sdk.ready();
+  notice('Проверяем сервер игры…');
+  const config=await api('config');
+  if(!new URLSearchParams(location.search).has('frame_id'))throw new Error('Нет подключения к окну Discord. Запусти игру через Приложения в Discord.');
+  notice('Ожидаем соединение с Discord…');
+  const sdk=new DiscordSDK(config.client_id);await limited(sdk.ready(),15000,'Discord не ответил за 15 секунд. Полностью закрой Activity и запусти её заново.');
   if(!sdk.guildId)throw new Error('Открой Activity на сервере, где установлен Фуфлыжник.');
-  const {code}=await sdk.commands.authorize({client_id:config.client_id,response_type:'code',state:crypto.randomUUID(),prompt:'none',scope:['identify']});
+  notice('Ожидаем разрешение на вход в Discord…');
+  const {code}=await limited(sdk.commands.authorize({client_id:config.client_id,response_type:'code',state:crypto.randomUUID(),prompt:'none',scope:['identify']}),120000,'Discord не завершил авторизацию. Закрой Activity и запусти заново.');
+  notice('Проверяем вход на сервере…');
   const auth=await api('login',{code,guild_id:sdk.guildId});session=auth.session;
-  await sdk.commands.authenticate({access_token:auth.access_token});await refresh();notice('Подключено к Discord');
+  notice('Подтверждаем вход в Discord…');
+  await limited(sdk.commands.authenticate({access_token:auth.access_token}),20000,'Discord не подтвердил вход за 20 секунд.');
+  notice('Загружаем баланс и роли…');await refresh();notice('Подключено к Discord');
   setInterval(async()=>{const now=performance.now(),delay=state?.crash?.status==='flying'?500:2500;if(polling||busy||document.hidden||now-lastPoll<delay)return;lastPoll=now;polling=true;try{await refresh()}catch(e){notice(e.message,true)}finally{polling=false}},250);
  }catch(error){notice(error.message+' Открой приложение через Discord и проверь настройки Activity.',true)}
 }
-draw();animateChart();init();
+init();
+try{draw();animateChart()}catch(error){console.error('Не удалось нарисовать график',error)}
 
 let adminBusy=false,adminRetry=null;
 async function adminRequest(operation){
