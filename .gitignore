@@ -4,3 +4,5 @@ __pycache__/
 *.sqlite3*
 roblox_updates.json
 roblox_updates.tmp
+*.log
+.fufel-dashboard-secrets/

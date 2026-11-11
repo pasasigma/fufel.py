@@ -12,6 +12,8 @@ import discord
 from discord.ext import tasks
 from discord.http import Route
 from economy import Economy, ROLES, PRIZES
+from moderation import RoleModeration
+from dashboard import Dashboard
 
 CLIENT_ID = os.getenv('DISCORD_CLIENT_ID', '1564664931343794366')
 ADMIN_IDS = {1542513699539918979, 933727248039698443}
@@ -32,6 +34,8 @@ class Activity:
         self.login_limits = {}
         self.commands_registered = False
         self.command_guilds = set()
+        self.moderation = RoleModeration(self.economy.db,self.locks)
+        self.dashboard = Dashboard(self)
 
     async def start_commands(self):
         if not self.commands_tick.is_running():
@@ -127,6 +131,7 @@ class Activity:
                 return
             self.http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20))
             app = web.Application(client_max_size=8192, middlewares=[self.errors])
+            self.dashboard.routes(app)
             app.router.add_get('/api/config', self.config)
             app.router.add_post('/api/login', self.login)
             app.router.add_get('/api/state', self.state)

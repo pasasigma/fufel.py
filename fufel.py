@@ -102,6 +102,9 @@ def format_duration(delta):
     return " ".join(parts)
 
 async def send_log(guild, text):
+    if 'activity_app' in globals():
+        ids = re.findall(r'(?<!\d)\d{15,20}(?!\d)',text)
+        activity_app.dashboard.audit(ids[0] if ids else 'Discord','discord',ids[1] if len(ids)>1 else '',detail=text)
     channel = guild.get_channel(LOG_CHANNEL_ID)
     if channel:
         embed = discord.Embed(description=text, color=discord.Color.dark_theme(), timestamp=datetime.datetime.now())
@@ -277,34 +280,14 @@ async def cmd_ban(ctx, target: discord.Member, *, reason: str = "Причина 
             remains = int(300 - (now - last_used))
             return await ctx.send(f"⏳ Перезарядка! Попробуйте через {remains} сек.")
 
-    role = ctx.guild.get_role(BANNED_ROLE_ID)
-    if not role:
-        return await ctx.send("❌ Роль для бана не найдена на сервере.")
-
-    me = ctx.guild.me
-    if me is None or not me.guild_permissions.manage_roles:
-        return await ctx.send("❌ Боту нужно право «Управлять ролями».")
-    if target.id == ctx.guild.owner_id or target.top_role >= me.top_role:
-        return await ctx.send("❌ Нельзя изменить роли владельца сервера или участника с ролью не ниже роли бота.")
-    if role.is_default() or role.managed or role >= me.top_role:
-        return await ctx.send("❌ Роль бана должна быть обычной ролью ниже высшей роли бота.")
-
-    
-    managed_roles = [r for r in target.roles if r.managed]
-    removed_roles = [r for r in target.roles
-                     if not r.is_default() and not r.managed and r.id != role.id]
     try:
-        await target.edit(roles=[*managed_roles, role], reason=reason)
-    except discord.Forbidden:
-        return await ctx.send("❌ Ошибка: проверьте иерархию ролей (роль бота должна быть выше роли нарушителя и роли бана).")
-    except discord.HTTPException:
-        logging.exception("Не удалось заменить роли участника при бане")
-        return await ctx.send("❌ Discord не подтвердил замену ролей. Проверьте роли участника перед повтором.")
+        result = await activity_app.moderation.ban(ctx.guild,target,reason)
+    except (ValueError,discord.HTTPException) as exc:
+        return await ctx.send(f"Не удалось выдать бан: {exc}")
     if is_mod and not is_admin:
         ban_cds[ctx.author.id] = time.time()
-    note = " Роли интеграций сохранены: Discord не разрешает их снимать." if managed_roles else ""
-    await ctx.send(f"✅ Пользователю {target.mention} выдана роль бана. Остальные обычные роли сняты.{note}")
-    await send_log(ctx.guild, f"🔨 **Бан (замена ролей)**\n**Кто выдал:** {ctx.author.mention}\n**Нарушитель:** {target.mention}\n**Снято ролей:** {len(removed_roles)}\n**Причина:** {reason}{note}")
+    await ctx.send(result['message'])
+    await send_log(ctx.guild,f"Бан | {ctx.author.id} → {target.id} | {reason}")
 
 
 @bot.hybrid_command(name="unban", description="Снять роль бана")
@@ -316,16 +299,12 @@ async def cmd_unban(ctx, target: discord.Member):
     if not (is_mod or is_admin):
         return await ctx.send("❌ Команда доступна только Модераторам.")
 
-    role = ctx.guild.get_role(BANNED_ROLE_ID)
-    if role and role in target.roles:
-        try:
-            await target.remove_roles(role, reason="Разбан")
-            await ctx.send(f"✅ С пользователя {target.mention} снята роль бана.")
-            await send_log(ctx.guild, f"🔓 **Разбан**\n**Кто снял:** {ctx.author.mention}\n**Пользователь:** {target.mention}")
-        except discord.Forbidden:
-            await ctx.send("❌ У бота нет прав на снятие этой роли.")
-    else:
-        await ctx.send(f"❕ У пользователя {target.mention} нет роли бана.")
+    try:
+        result = await activity_app.moderation.unban(ctx.guild,target,"Разбан")
+        await ctx.send(result['message'])
+        await send_log(ctx.guild,f"Разбан | {ctx.author.id} → {target.id} | {result['message']}")
+    except (ValueError,discord.HTTPException) as exc:
+        await ctx.send(f"Не удалось снять бан: {exc}")
 
 
 @bot.hybrid_command(name="backup", description="Снять наказания участника")
@@ -344,7 +323,8 @@ async def cmd_backup(ctx, target: discord.Member):
     
     role = ctx.guild.get_role(BANNED_ROLE_ID)
     if role and role in target.roles:
-        await target.remove_roles(role, reason="Backup - очистка наказаний")
+        result = await activity_app.moderation.unban(ctx.guild,target,"Backup - очистка наказаний")
+        await ctx.send(result['message'])
         actions.append("роль бана")
 
     if not actions:
