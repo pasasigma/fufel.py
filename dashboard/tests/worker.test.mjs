@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import worker from '../worker.js';
+const env={BRIDGE_KEY:'x'.repeat(40),BOT_ORIGIN:'https://bot.example',ASSETS:{fetch:async()=>new Response('<html></html>',{headers:{'Content-Type':'text/html'}})}};
+test('reject cross-site login',async()=>{const r=await worker.fetch(new Request('https://dashboard.example/api/dashboard/login',{method:'POST',headers:{Origin:'https://evil.example','Content-Type':'application/json'},body:'{}'}),env);assert.equal(r.status,403)});
+test('bridge secret never goes to browser',async()=>{const original=global.fetch;let sent;global.fetch=async(url,options)=>{sent={url,options};return Response.json({ok:true})};try{const r=await worker.fetch(new Request('https://dashboard.example/api/dashboard/me',{headers:{Cookie:'unrelated=private; __Host-dashboard=session','X-Dashboard-Key':'evil'}}),env);assert.equal(r.status,200);assert.equal(sent.options.headers.get('X-Dashboard-Key'),env.BRIDGE_KEY);assert.equal(sent.options.headers.get('Cookie'),'__Host-dashboard=session');assert.equal(r.headers.get('X-Dashboard-Key'),null);assert.equal(r.headers.get('Cache-Control'),'no-store')}finally{global.fetch=original}});
+test('unknown endpoints and missing setup fail closed',async()=>{assert.equal((await worker.fetch(new Request('https://dashboard.example/api/shell'),env)).status,404);assert.equal((await worker.fetch(new Request('https://dashboard.example/api/dashboard/me'),{...env,BRIDGE_KEY:''})).status,503)});
+test('HTML cannot be framed',async()=>{const r=await worker.fetch(new Request('https://dashboard.example/'),env);assert.equal(r.headers.get('X-Frame-Options'),'DENY');assert.ok(r.headers.get('Content-Security-Policy').includes("frame-ancestors 'none'"))});
+
+test('oversized payload is rejected before forwarding',async()=>{const r=await worker.fetch(new Request('https://dashboard.example/api/dashboard/login',{method:'POST',headers:{Origin:'https://dashboard.example','Content-Type':'application/json'},body:'x'.repeat(8193)}),env);assert.equal(r.status,413)});
