@@ -138,7 +138,9 @@ class Activity:
             app.router.add_post('/api/action', self.action)
             app.router.add_post('/api/admin', self.admin)
             app.router.add_get('/', self.index)
-            app.router.add_static('/assets', ROOT / 'static' / 'assets')
+            assets = ROOT / 'static' / 'assets'
+            if assets.is_dir():
+                app.router.add_static('/assets', assets)
             runner = web.AppRunner(app, access_log=None)
             try:
                 await runner.setup()
@@ -148,6 +150,7 @@ class Activity:
                 await self.http.close()
                 raise
             self.runner = runner
+            logger.warning("Dashboard API ready on port %s: /dashboard-api/", os.getenv("PORT", "8080"))
             if not self.voice_tick.is_running():
                 self.voice_tick.start()
             if not self.entry_point_tick.is_running():
